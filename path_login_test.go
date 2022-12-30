@@ -42,6 +42,8 @@ var (
 	testProjectedUID         = "77c81ad7-1bea-4d94-9ca5-f5d7f3632331"
 	testProjectedMockFactory = mockTokenReviewFactory(testProjectedName, testNamespace, testProjectedUID)
 
+	testAudience = "kubernetes.default.svc"
+
 	testDefaultPEMs      []string
 	ecdsaPrivateKey      *ecdsa.PrivateKey
 	ecdsaOtherPrivateKey *ecdsa.PrivateKey
@@ -866,6 +868,106 @@ func TestAliasLookAhead(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoginAudienceValidation(t *testing.T) {
+	config := defaultTestBackendConfig()
+	b, storage := setupBackend(t, config)
+
+  // update role to contain audience check
+	data := map[string]interface{}{
+		"bound_service_account_names":      fmt.Sprintf("%s,default", testName),
+		"bound_service_account_namespaces": testNamespace,
+		"audience":                         testAudience,
+		"policies":                         "test",
+		"period":                           "3s",
+		"ttl":                              "1s",
+		"num_uses":                         12,
+		"max_ttl":                          "5s",
+	}
+
+	req := &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "role/plugin-test",
+		Storage:   storage,
+		Data:      data,
+	}
+
+	resp, err := b.HandleRequest(context.Background(), req)
+	if err != nil || (resp != nil && resp.IsError()) {
+		t.Fatalf("err:%s resp:%#v\n", err, resp)
+	}
+
+	b.(*kubeAuthBackend).reviewFactory = testProjectedMockFactory
+
+	// test successful login
+	data = map[string]interface{}{
+		"role": "plugin-test",
+		"jwt":  jwtProjectedData,
+	}
+
+	req = &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "login",
+		Storage:   storage,
+		Data:      data,
+		Connection: &logical.Connection{
+			RemoteAddr: "127.0.0.1",
+		},
+	}
+
+	resp, err = b.HandleRequest(context.Background(), req)
+	if err != nil || (resp != nil && resp.IsError()) {
+		t.Fatalf("err:%s resp:%#v\n", err, resp)
+	}
+
+  // update role to contain wrong audience check
+	data = map[string]interface{}{
+		"bound_service_account_names":      fmt.Sprintf("%s,default", testName),
+		"bound_service_account_namespaces": testNamespace,
+		"audience":                         "wrong-audience",
+		"policies":                         "test",
+		"period":                           "3s",
+		"ttl":                              "1s",
+		"num_uses":                         12,
+		"max_ttl":                          "5s",
+	}
+
+	req = &logical.Request{
+		Operation: logical.CreateOperation,
+		Path:      "role/plugin-test",
+		Storage:   storage,
+		Data:      data,
+	}
+
+	resp, err = b.HandleRequest(context.Background(), req)
+	if err != nil || (resp != nil && resp.IsError()) {
+		t.Fatalf("err:%s resp:%#v\n", err, resp)
+	}
+
+	// test login with wrong audience
+	data = map[string]interface{}{
+		"role": "plugin-test",
+		"jwt":  jwtProjectedData,
+	}
+
+	req = &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "login",
+		Storage:   storage,
+		Data:      data,
+		Connection: &logical.Connection{
+			RemoteAddr: "127.0.0.1",
+		},
+	}
+
+	resp, err = b.HandleRequest(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), `invalid audience (aud) claim`) {
+		t.Fatalf("unexpected error: %s", err)
 	}
 }
 
