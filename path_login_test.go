@@ -875,7 +875,7 @@ func TestLoginAudienceValidation(t *testing.T) {
 	config := defaultTestBackendConfig()
 	b, storage := setupBackend(t, config)
 
-  // update role to contain audience check
+	// update role to contain audience check
 	data := map[string]interface{}{
 		"bound_service_account_names":      fmt.Sprintf("%s,default", testName),
 		"bound_service_account_namespaces": testNamespace,
@@ -922,7 +922,7 @@ func TestLoginAudienceValidation(t *testing.T) {
 		t.Fatalf("err:%s resp:%#v\n", err, resp)
 	}
 
-  // update role to contain wrong audience check
+	// update role to contain wrong audience check
 	data = map[string]interface{}{
 		"bound_service_account_names":      fmt.Sprintf("%s,default", testName),
 		"bound_service_account_namespaces": testNamespace,
